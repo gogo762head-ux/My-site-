@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#09090d"><meta name="apple-mobile-web-app-capable" content="yes">
+<title>StreamClip — AI Shorts</title>
+<style>
+:root{color-scheme:dark;--bg:#09090d;--panel:#15151d;--muted:#9b9baa;--purple:#9b6cff;--line:#292936}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -10%,#251542 0,transparent 42%),var(--bg);color:#fff;font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
+main{width:min(100% - 28px,620px);margin:0 auto;padding:28px 0 60px}.brand{font-weight:900;letter-spacing:.08em;font-size:13px;color:#c8b2ff}.brand span{color:#fff}
+h1{font-size:clamp(32px,9vw,48px);line-height:1.02;margin:25px 0 12px;letter-spacing:-.05em}h1 em{font-style:normal;color:#b99aff}
+.sub{color:var(--muted);line-height:1.5;margin:0 0 25px}.panel{background:rgba(21,21,29,.92);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 18px 55px #0005}
+label{display:block;font-size:13px;font-weight:700;margin-bottom:10px}.file{width:100%;padding:14px;border:1px dashed #56516b;border-radius:13px;background:#101018;color:#ddd}
+.check{display:flex;align-items:flex-start;gap:10px;color:#c3c3cf;font-size:12px;line-height:1.4;margin:15px 0}.check input{margin-top:2px;accent-color:var(--purple)}
+button{width:100%;border:0;border-radius:14px;background:linear-gradient(100deg,#8a5cff,#b16cff);color:white;font-weight:850;font-size:16px;padding:17px;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}.hint{font-size:12px;color:var(--muted);line-height:1.5;margin-top:12px}
+.status{display:none;margin-top:18px;padding:14px;border-radius:14px;background:#11111a;border:1px solid var(--line);color:#ddd}.bar{height:6px;background:#292936;border-radius:8px;overflow:hidden;margin-top:12px}.bar i{display:block;height:100%;width:12%;background:var(--purple);animation:move 1.5s ease-in-out infinite alternate}@keyframes move{to{width:92%}}
+#results{margin-top:24px}.clip{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:13px;margin:12px 0}.clip video{width:100%;max-height:480px;aspect-ratio:9/16;object-fit:contain;background:#000;border-radius:12px}.clip h3{margin:12px 0 5px;font-size:16px}.meta{font-size:12px;color:var(--muted);line-height:1.5}.download{display:block;text-align:center;text-decoration:none;background:#28213b;color:#e9dcff;padding:12px;border-radius:11px;font-weight:750;margin-top:12px}.score{color:#c7a9ff;font-weight:800}
+#downloadAll{display:none;margin:18px 0;background:#262333}.error{color:#ff9caa}.footer{color:#777786;text-align:center;font-size:11px;margin:24px 10px;line-height:1.5}
+</style></head>
+<body><main>
+<div class="brand">STREAM<span>CLIP</span> / AI SHORTS</div>
+<h1>Long streams.<br><em>Short moments.</em></h1>
+<p class="sub">Upload a video you have permission to edit. AI finds the strongest moments and turns them into vertical clips.</p>
+<section class="panel">
+<label for="video">CHOOSE A VIDEO</label>
+<input class="file" id="video" type="file" accept="video/*">
+<div class="check"><input id="rights" type="checkbox"><span>I own this video or have permission from the rights holder to edit and republish it.</span></div>
+<button id="start">FIND VIRAL CLIPS</button>
+<div class="hint">The video is processed securely by the app's cloud server. Longer videos take more time. This starter version uses video uploads rather than extracting videos from social platforms.</div>
+<div class="status" id="status"><strong id="statusText">Uploading video…</strong><div class="bar"><i></i></div></div>
+</section>
+<div id="results"></div><button id="downloadAll">DOWNLOAD ALL CLIPS</button>
+<div class="footer">AI scores estimate editing potential, not guaranteed views. Only upload content you are authorized to use.</div>
+</main>
+<script>
+const start=document.querySelector('#start'), file=document.querySelector('#video'), rights=document.querySelector('#rights');
+const statusBox=document.querySelector('#status'), statusText=document.querySelector('#statusText'), results=document.querySelector('#results'), all=document.querySelector('#downloadAll');
+let currentJob=null, poller=null;
+start.onclick=async()=>{
+ if(!file.files.length){alert('Choose a video first.');return}
+ if(!rights.checked){alert('Please confirm you have permission to edit and republish this video.');return}
+ start.disabled=true;results.innerHTML='';all.style.display='none';statusBox.style.display='block';statusText.textContent='Uploading your video…';
+ try{
+  const fd=new FormData();fd.append('video',file.files[0]);fd.append('rights_confirmed','true');
+  const r=await fetch('/api/clip',{method:'POST',body:fd});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Upload failed');
+  currentJob=d.job_id;statusText.textContent='Video uploaded. AI is analyzing it…';
+  poller=setInterval(checkStatus,3000);checkStatus();
+ }catch(e){statusText.textContent=e.message;statusText.className='error';start.disabled=false}
+};
+async function checkStatus(){
+ try{
+  const r=await fetch('/api/status/'+currentJob),d=await r.json();
+  if(d.status==='done'){clearInterval(poller);statusBox.style.display='none';start.disabled=false;render(d.clips);return}
+  if(d.status==='error'){clearInterval(poller);statusText.textContent=d.message;statusText.className='error';start.disabled=false;return}
+  statusText.textContent=({queued:'Waiting to start…',transcribing:'AI is understanding the conversation…','finding moments':'Finding the strongest moments…'}[d.status]||d.status+'…');
+ }catch(e){statusText.textContent='Connection interrupted. Refresh and check the job again.'}
+}
+function render(clips){
+ results.innerHTML='<h2>Your clips</h2>';
+ clips.forEach((c,i)=>{
+  const el=document.createElement('article');el.className='clip';
+  el.innerHTML=`<video controls playsinline preload="metadata" src="${c.url}"></video><h3>${escapeHtml(c.title)}</h3><div class="meta">${Math.round(c.end-c.start)} seconds · AI potential: <span class="score">${c.score}/100</span><br>${escapeHtml(c.reason||'Selected by AI')}</div><a class="download" href="${c.url}" download="streamclip-${i+1}.mp4">DOWNLOAD CLIP</a>`;
+  results.appendChild(el);
+ });
+ all.style.display='block';all.onclick=()=>location.href='/api/download-all/'+currentJob;
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+</script></body></html>
